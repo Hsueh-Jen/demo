@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>搶頭香 3D</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #87CEEB;
+            font-family: '微軟正黑體', 'Microsoft JhengHei', sans-serif;
+            user-select: none;
+        }
+
+        #game-container {
+            width: 100vw;
+            height: 100vh;
+            display: block;
+        }
+
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+        }
+
+        #title {
+            font-size: 5rem;
+            color: #FFD700;
+            text-shadow: 3px 3px 0 #c0392b, -2px -2px 0 #c0392b, 2px -2px 0 #c0392b, -2px 2px 0 #c0392b, 0px 5px 15px rgba(0, 0, 0, 0.5);
+            margin-bottom: 20px;
+            font-weight: 900;
+            letter-spacing: 5px;
+        }
+
+        #message {
+            font-size: 1.8rem;
+            color: white;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 30px 50px;
+            border-radius: 15px;
+            border: 3px solid #FFD700;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.8);
+            pointer-events: auto;
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        .instruction-key {
+            font-weight: bold;
+            color: #FFD700;
+            background: #333;
+            padding: 5px 15px;
+            border-radius: 8px;
+            border: 2px solid #555;
+            box-shadow: 0 4px 0 #111;
+            display: inline-block;
+            transform: translateY(-3px);
+        }
+
+        #instruction {
+            margin-top: 30px;
+            font-weight: bold;
+            cursor: pointer;
+            animation: pulse 1.5s infinite;
+            color: #f1c40f;
+        }
+
+        @keyframes pulse {
+            0% {
+                transform: scale(1);
+            }
+
+            50% {
+                transform: scale(1.05);
+            }
+
+            100% {
+                transform: scale(1);
+            }
+        }
+
+        #status-bar {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            font-size: 2rem;
+            color: #fff;
+            text-shadow: 2px 2px 4px #000;
+            font-weight: bold;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 10px 20px;
+            border-radius: 10px;
+            border-left: 5px solid #e74c3c;
+        }
+
+        h2 {
+            color: #f1c40f;
+            margin: 0 0 15px 0;
+        }
+
+        p {
+            margin: 10px 0;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="game-container"></div>
+    <div id="status-bar" class="hidden">距離香爐: <span id="distance">50.0</span>m</div>
+    <div id="ui-layer">
+        <div id="title">搶頭香 3D</div>
+        <div id="message">
+            <h2>新春祈福，誰能拔得頭籌？</h2>
+            <p>廟門開啟後，</p>
+            <p>狂按 <span class="instruction-key">空白鍵 Space</span> 或 <span class="instruction-key">狂點螢幕</span> 向前衝！</p>
+            <p id="instruction">👉 按 Enter 或 點擊此處 開始 👈</p>
+        </div>
+    </div>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js"
+            }
+        }
+    </script>
+    <script type="module">
+        import * as THREE from 'three';
+
+        // Scene Setup
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x1a0f2e); // Dark night sky
+        scene.fog = new THREE.Fog(0x1a0f2e, 20, 120);
+
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(0, 4, 8); // Slightly higher, behind player
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        document.getElementById('game-container').appendChild(renderer.domElement);
+
+        // Lighting
+        const ambientLight = new THREE.AmbientLight(0x404040, 1.5); // Soft moonlight
+        scene.add(ambientLight);
+
+        const moonLight = new THREE.DirectionalLight(0xaabbff, 0.8);
+        moonLight.position.set(20, 50, -20);
+        moonLight.castShadow = true;
+        moonLight.shadow.mapSize.width = 2048;
+        moonLight.shadow.mapSize.height = 2048;
+        moonLight.shadow.camera.near = 0.5;
+        moonLight.shadow.camera.far = 150;
+        moonLight.shadow.camera.left = -50;
+        moonLight.shadow.camera.right = 50;
+        moonLight.shadow.camera.top = 50;
+        moonLight.shadow.camera.bottom = -50;
+        scene.add(moonLight);
+
+        // Environment: Ground
+        const floorGeo = new THREE.PlaneGeometry(100, 200);
+        const floorMat = new THREE.MeshStandardMaterial({ color: 0x333333, roughness: 0.9 });
+        const floor = new THREE.Mesh(floorGeo, floorMat);
+        floor.rotation.x = -Math.PI / 2;
+        floor.receiveShadow = true;
+        scene.add(floor);
+
+        // Environment: Red Carpet
+        const carpetGeo = new THREE.PlaneGeometry(16, 80);
+        const carpetMat = new THREE.MeshStandardMaterial({ color: 0x8b0000, roughness: 1.0 });
+        const carpet = new THREE.Mesh(carpetGeo, carpetMat);
+        carpet.rotation.x = -Math.PI / 2;
+        carpet.position.set(0, 0.02, -30);
+        carpet.receiveShadow = true;
+        scene.add(carpet);
+
+        // Environment: Censer (Incense Burner)
+        const censerGroup = new THREE.Group();
+        const bowlGeo = new THREE.CylinderGeometry(2.5, 2, 2, 32);
+        const censerMat = new THREE.MeshStandardMaterial({ color: 0xb87333, metalness: 0.7, roughness: 0.3 }); // Bronze
+        const bowl = new THREE.Mesh(bowlGeo, censerMat);
+        bowl.position.y = 2.5;
+        bowl.castShadow = true;
+        bowl.receiveShadow = true;
+        censerGroup.add(bowl);
+
+        // Ashes inside censer
+        const ashGeo = new THREE.CylinderGeometry(2.3, 2.3, 0.2, 32);
+        const ashMat = new THREE.MeshStandardMaterial({ color: 0x777777, roughness: 1.0 });
+        const ash = new THREE.Mesh(ashGeo, ashMat);
+        ash.position.y = 3.4;
+        censerGroup.add(ash);
+
+        // Legs
+        const legGeo = new THREE.CylinderGeometry(0.3, 0.2, 2);
+        const leg1 = new THREE.Mesh(legGeo, censerMat); leg1.position.set(1.5, 1, 1.5); leg1.castShadow = true;
+        const leg2 = new THREE.Mesh(legGeo, censerMat); leg2.position.set(-1.5, 1, 1.5); leg2.castShadow = true;
+        const leg3 = new THREE.Mesh(legGeo, censerMat); leg3.position.set(0, 1, -2); leg3.castShadow = true;
+        censerGroup.add(leg1, leg2, leg3);
+
+        const goalLineZ = -55;
+        censerGroup.position.set(0, 0, goalLineZ - 2);
+        scene.add(censerGroup);
+
+        // Environment: Temple Background
+        const wallGeo = new THREE.BoxGeometry(60, 20, 2);
+        const wallMat = new THREE.MeshStandardMaterial({ color: 0x5a0000 }); // Dark Red
+        const backWall = new THREE.Mesh(wallGeo, wallMat);
+        backWall.position.set(0, 10, -65);
+        backWall.receiveShadow = true;
+        scene.add(backWall);
+
+        // Lanterns along the path
+        const lanternGeo = new THREE.SphereGeometry(0.6, 16, 16);
+        const lanternMat = new THREE.MeshStandardMaterial({ color: 0xff3300, emissive: 0xaa1100, emissiveIntensity: 0.5 });
+        const poleGeo = new THREE.CylinderGeometry(0.1, 0.1, 4);
+        const poleMat = new THREE.MeshStandardMaterial({ color: 0x222222 });
+
+        for (let i = 0; i < 6; i++) {
+            const zPos = -5 - i * 10;
+            // Left lantern
+            const lGroup = new THREE.Group();
+            const lPole = new THREE.Mesh(poleGeo, poleMat); lPole.position.y = 2; lGroup.add(lPole);
+            const lLightM = new THREE.Mesh(lanternGeo, lanternMat); lLightM.position.y = 4; lGroup.add(lLightM);
+            const lLight = new THREE.PointLight(0xff7700, 2, 15); lLight.position.y = 4; lGroup.add(lLight);
+            lGroup.position.set(-9, 0, zPos);
+            scene.add(lGroup);
+
+            // Right lantern
+            const rGroup = new THREE.Group();
+            const rPole = new THREE.Mesh(poleGeo, poleMat); rPole.position.y = 2; rGroup.add(rPole);
+            const rLightM = new THREE.Mesh(lanternGeo, lanternMat); rLightM.position.y = 4; rGroup.add(rLightM);
+            const rLight = new THREE.PointLight(0xff7700, 2, 15); rLight.position.y = 4; rGroup.add(rLight);
+            rGroup.position.set(9, 0, zPos);
+            scene.add(rGroup);
+        }
+
+        // Environment: Temple Doors (Starting Line)
+        const doorWidth = 10;
+        const doorGeo = new THREE.BoxGeometry(doorWidth, 12, 1);
+        const doorMat = new THREE.MeshStandardMaterial({ color: 0x3e1f00, roughness: 0.8 }); // Dark Wood
+
+        const leftDoorPivot = new THREE.Group();
+        leftDoorPivot.position.set(-doorWidth, 6, -2);
+        scene.add(leftDoorPivot);
+        const leftDoor = new THREE.Mesh(doorGeo, doorMat);
+        leftDoor.position.set(doorWidth / 2, 0, 0);
+        leftDoor.castShadow = true;
+        leftDoorPivot.add(leftDoor);
+
+        const rightDoorPivot = new THREE.Group();
+        rightDoorPivot.position.set(doorWidth, 6, -2);
+        scene.add(rightDoorPivot);
+        const rightDoor = new THREE.Mesh(doorGeo, doorMat);
+        rightDoor.position.set(-doorWidth / 2, 0, 0);
+        rightDoor.castShadow = true;
+        rightDoorPivot.add(rightDoor);
+
+        // Frame
+        const colGeo = new THREE.BoxGeometry(2, 14, 2);
+        const colMat = new THREE.MeshStandardMaterial({ color: 0x5a0000 });
+        const leftCol = new THREE.Mesh(colGeo, colMat); leftCol.position.set(-doorWidth - 1, 7, -2); leftCol.castShadow = true; scene.add(leftCol);
+        const rightCol = new THREE.Mesh(colGeo, colMat); rightCol.position.set(doorWidth + 1, 7, -2); rightCol.castShadow = true; scene.add(rightCol);
+
+        // Characters
+        const createCharacter = (color, name, xPos) => {
+            const group = new THREE.Group();
+
+            // Body
+            const bodyGeo = new THREE.CapsuleGeometry(0.5, 1.2, 4, 8);
+            const bodyMat = new THREE.MeshStandardMaterial({ color: color, roughness: 0.5 });
+            const body = new THREE.Mesh(bodyGeo, bodyMat);
+            body.position.y = 1.1;
+            body.castShadow = true;
+            group.add(body);
+
+            // Stick (Incense)
+            const stickGeo = new THREE.CylinderGeometry(0.03, 0.03, 2.5);
+            const stickMat = new THREE.MeshStandardMaterial({ color: 0xdd1111 });
+            const stick = new THREE.Mesh(stickGeo, stickMat);
+            stick.position.set(0.3, 1.8, -0.6);
+            stick.rotation.x = -Math.PI / 4;
+            stick.castShadow = true;
+            group.add(stick);
+
+            const fireGeo = new THREE.SphereGeometry(0.06, 8, 8);
+            const fireMat = new THREE.MeshBasicMaterial({ color: 0xffaa00 });
+            const fire = new THREE.Mesh(fireGeo, fireMat);
+            fire.position.set(0, 1.25, 0);
+            stick.add(fire);
+
+            group.position.set(xPos, 0, 0);
+            scene.add(group);
+
+            return {
+                mesh: group,
+                name: name,
+                speedBase: Math.random() * 1.5 + 3.0, // Avg 3.75 units/s
+                phase: Math.random() * Math.PI * 2,
+                colorHex: color
+            };
+        };
+
+        const player = createCharacter(0x3498db, '你', 0); // Player in middle
+        const ais = [
+            createCharacter(0xe74c3c, '熱血阿伯', -4),
+            createCharacter(0x2ecc71, '運動健將', -2),
+            createCharacter(0xf1c40f, '隔壁大媽', 2),
+            createCharacter(0x9b59b6, '神秘阿姨', 4),
+            createCharacter(0xe67e22, '地方小明', 6)
+        ];
+
+        const competitors = [player, ...ais];
+
+        // Game State
+        let gameState = 'INIT'; // INIT, OPENING, RACING, FINISHED
+        let doorProgress = 0;
+
+        // UI Layer
+        const uiLayer = document.getElementById('ui-layer');
+        const titleElem = document.getElementById('title');
+        const messageElem = document.getElementById('message');
+        const instructionElem = document.getElementById('instruction');
+        const statusBar = document.getElementById('status-bar');
+        const distanceElem = document.getElementById('distance');
+
+        // Interaction
+        function startGameSequence() {
+            if (gameState !== 'INIT') return;
+            gameState = 'OPENING';
+            titleElem.classList.add('hidden');
+            messageElem.innerHTML = '<h2 style="font-size: 2.5rem; margin-bottom: 5px;">時辰已到！</h2><h2 style="color: #e74c3c; animation: pulse 1s infinite;">廟門開啟中...</h2><p style="font-size:1.5rem;">準備狂按 <span class="instruction-key">空白鍵 Space</span> 或 <span class="instruction-key">點擊螢幕</span></p>';
+        }
+
+        function dashPlayer() {
+            if (gameState !== 'RACING') return;
+            player.mesh.position.z -= 0.8; // Player dash amount
+            // Visual feedback for dash
+            player.mesh.position.y = 0.8 + Math.random() * 0.4;
+            player.mesh.rotation.z = (Math.random() - 0.5) * 0.4;
+            player.mesh.rotation.x = -0.2; // Lean forward
+        }
+
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'Enter') {
+                startGameSequence();
+            } else if (e.code === 'Space') {
+                if (gameState === 'INIT') startGameSequence();
+                else dashPlayer();
+            }
+        });
+
+        // Use pointerdown (touches + mouse clicks)
+        window.addEventListener('pointerdown', (e) => {
+            // Check if clicking inside message box to start
+            if (gameState === 'INIT') {
+                startGameSequence();
+            } else if (gameState === 'RACING') {
+                dashPlayer();
+            }
+        });
+
+        // Window resize
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const dt = clock.getDelta();
+            const time = clock.getElapsedTime();
+
+            if (gameState === 'OPENING') {
+                doorProgress += dt * 0.6; // ~1.6 seconds to open
+                if (doorProgress >= 1) {
+                    doorProgress = 1;
+                    gameState = 'RACING';
+                    messageElem.classList.add('hidden');
+                    statusBar.classList.remove('hidden');
+                }
+                // Ease out cubic
+                const easeOut = 1 - Math.pow(1 - doorProgress, 3);
+                leftDoorPivot.rotation.y = -easeOut * Math.PI * 0.6;
+                rightDoorPivot.rotation.y = easeOut * Math.PI * 0.6;
+
+                // Camera slight zoom in effect
+                camera.position.z = THREE.MathUtils.lerp(camera.position.z, 5, 0.05);
+            }
+            else if (gameState === 'RACING') {
+                // Update AIs
+                ais.forEach(ai => {
+                    // Dynamic speed calculation
+                    const burst = Math.sin(time * 3 + ai.phase) > 0.5 ? 2.5 : 0; // sudden bursts
+                    const currentSpeed = ai.speedBase + burst + Math.random() * 1.0;
+
+                    ai.mesh.position.z -= currentSpeed * dt;
+
+                    // Bounce animation to simulate running
+                    if (ai.mesh.position.y <= 0.1) {
+                        ai.mesh.position.y = 0.6; // jump
+                        ai.mesh.rotation.z = (Math.random() - 0.5) * 0.3;
+                        ai.mesh.rotation.x = -0.15;
+                    } else {
+                        ai.mesh.position.y = THREE.MathUtils.lerp(ai.mesh.position.y, 0, 15 * dt);
+                    }
+                    ai.mesh.rotation.z = THREE.MathUtils.lerp(ai.mesh.rotation.z, 0, 10 * dt);
+                    ai.mesh.rotation.x = THREE.MathUtils.lerp(ai.mesh.rotation.x, 0, 10 * dt);
+                });
+
+                // Player physics/return to ground
+                player.mesh.position.y = THREE.MathUtils.lerp(player.mesh.position.y, 0, 15 * dt);
+                player.mesh.rotation.z = THREE.MathUtils.lerp(player.mesh.rotation.z, 0, 10 * dt);
+                player.mesh.rotation.x = THREE.MathUtils.lerp(player.mesh.rotation.x, 0, 10 * dt);
+
+                // Update Camera
+                const targetCamZ = player.mesh.position.z + 7;
+                camera.position.z = THREE.MathUtils.lerp(camera.position.z, targetCamZ, 0.1);
+                // Camera shakes slightly if running fast
+                const shake = (player.mesh.position.y > 0.2) ? (Math.random() - 0.5) * 0.05 : 0;
+                camera.position.y = 4 + shake;
+                camera.position.x = THREE.MathUtils.lerp(camera.position.x, player.mesh.position.x * 0.5, 0.05);
+
+                camera.lookAt(player.mesh.position.x * 0.3, 2, player.mesh.position.z - 10);
+
+                // Update HUD
+                const rawDist = Math.max(0, (player.mesh.position.z - goalLineZ));
+                distanceElem.innerText = rawDist.toFixed(1);
+
+                // Check Win Condition
+                let winner = null;
+                // Sort competitors by Z position to find the front-most
+                const sorted = [...competitors].sort((a, b) => a.mesh.position.z - b.mesh.position.z);
+
+                if (sorted[0].mesh.position.z <= goalLineZ) {
+                    winner = sorted[0];
+                }
+
+                if (winner) {
+                    gameState = 'FINISHED';
+                    statusBar.classList.add('hidden');
+                    uiLayer.classList.remove('hidden');
+                    messageElem.classList.remove('hidden');
+                    titleElem.classList.remove('hidden');
+
+                    // Final stick placing visual
+                    winner.mesh.children[1].rotation.x = -Math.PI / 2; // Insert incense
+                    winner.mesh.children[1].position.set(0, 1.5, -1.5); // Move forward into censer
+
+                    if (winner === player) {
+                        titleElem.innerText = '拔得頭籌！';
+                        titleElem.style.color = '#2ecc71';
+                        titleElem.style.textShadow = '0 0 20px #2ecc71';
+                        messageElem.innerHTML = `
+                            <h2>恭喜你搶到頭香！</h2>
+                            <p style="font-size: 1.5rem;">今年一定大吉大利、好運旺旺來！🎉</p>
+                            <button onclick="location.reload()" style="margin-top:20px; padding:15px 30px; font-size:1.5rem; background:#2ecc71; color:white; border:none; border-radius:10px; cursor:pointer; font-weight:bold;">再挑戰一次</button>
+                        `;
+                    } else {
+                        titleElem.innerText = '挑戰失敗';
+                        titleElem.style.color = '#e74c3c';
+                        titleElem.style.textShadow = '0 0 20px #e74c3c';
+                        // Get winner color as hex string
+                        const colorStr = '#' + winner.colorHex.toString(16).padStart(6, '0');
+                        messageElem.innerHTML = `
+                            <h2>太可惜了！</h2>
+                            <p style="font-size: 1.5rem;"><b><span style="color:${colorStr}">${winner.name}</span></b> 搶走了頭香！</p>
+                            <p>沒關係，心誠則靈。明年再來！</p>
+                            <button onclick="location.reload()" style="margin-top:20px; padding:15px 30px; font-size:1.5rem; background:#e74c3c; color:white; border:none; border-radius:10px; cursor:pointer; font-weight:bold;">再試一次</button>
+                        `;
+                    }
+                }
+            } else if (gameState === 'FINISHED') {
+                // Smoothly stop others
+                competitors.forEach(c => {
+                    c.mesh.position.y = THREE.MathUtils.lerp(c.mesh.position.y, 0, 5 * dt);
+                    c.mesh.rotation.z = THREE.MathUtils.lerp(c.mesh.rotation.z, 0, 5 * dt);
+                    c.mesh.rotation.x = THREE.MathUtils.lerp(c.mesh.rotation.x, 0, 5 * dt);
+                    // Slow down those who haven't finished
+                    if (c.mesh.position.z > goalLineZ) {
+                        c.mesh.position.z -= dt * 2; // slow drift
+                    }
+                });
+
+                // Camera circles the winner
+                const winner = [...competitors].sort((a, b) => a.mesh.position.z - b.mesh.position.z)[0];
+                camera.position.x = Math.sin(time * 0.5) * 8;
+                camera.position.z = goalLineZ + Math.cos(time * 0.5) * 8 + 4;
+                camera.lookAt(0, 2, goalLineZ);
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        animate();
+    </script>
+</body>
+
+</html>
